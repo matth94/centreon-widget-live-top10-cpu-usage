@@ -41,7 +41,8 @@ require_once $centreon_path . 'www/class/centreonDuration.class.php';
 require_once $centreon_path . 'www/class/centreonUtils.class.php';
 require_once $centreon_path . 'www/class/centreonACL.class.php';
 require_once $centreon_path . 'www/class/centreonHost.class.php';
-require_once $centreon_path . 'bootstrap.php';
+require_once $centreon_path . 'www/class/centreonDB.class.php';
+require_once $centreon_path . 'GPL_LIB/Smarty/libs/Smarty.class.php';
 
 CentreonSession::start(1);
 
@@ -51,12 +52,12 @@ if (!isset($_SESSION['centreon']) || !isset($_REQUEST['widgetId'])) {
 
 $centreon = $_SESSION['centreon'];
 $widgetId = $_REQUEST['widgetId'];
-$grouplistStr = '';
 
 try {
-    $db_centreon = $dependencyInjector['configuration_db'];
-    $db = $dependencyInjector['realtime_db'];
-
+    global $pearDB;
+    $db_centreon = new CentreonDB("centreon");
+    $db = new CentreonDB("centstorage");
+    $pearDB = $db_centreon;
     $widgetObj = new CentreonWidget($centreon, $db_centreon);
     $preferences = $widgetObj->getWidgetPreferences($widgetId);
     $autoRefresh = 0;
@@ -81,7 +82,11 @@ $template = new Smarty();
 $template = initSmartyTplForPopup($path, $template, "./", $centreon_path);
 
 $data = array();
-
+if ($preferences['Ascending'] == '1') {
+	$order = 'ASC';
+} else {
+	$order = 'DESC';
+}
 $query = "SELECT i.host_name, i.service_description, i.service_id, i.host_id, AVG(m.current_value) AS current_value, s.state AS status "
         ."FROM metrics m, hosts h "
         .($preferences['host_group'] ? ", hosts_hostgroups hg " : "")
@@ -102,7 +107,7 @@ $query .="AND i.host_id = acl.host_id "
 $query .="AND s.enabled = 1 "
         ."AND h.enabled = 1 "
         ."GROUP BY i.host_id "
-        ."ORDER BY current_value DESC "
+        ."ORDER BY current_value ".$order." "
         ."LIMIT ".$preferences['nb_lin'].";";
 
 $numLine = 1;
@@ -116,7 +121,8 @@ while ($row = $res->fetchRow()) {
 }
 
 $template->assign('preferences', $preferences);
-$template->assign('widgetId', $widgetId);
+$template->assign('widgetID', $widgetId);
+$template->assign('preferences', $preferences);
 $template->assign('autoRefresh', $autoRefresh);
 $template->assign('data', $data);
 $template->display('table_top10cpu.ihtml');
